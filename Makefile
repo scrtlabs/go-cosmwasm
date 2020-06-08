@@ -3,7 +3,7 @@
 TOP_DIR := ../third_party/build
 include $(TOP_DIR)/buildenv.mk
 
-DOCKER_TAG := 0.6.3
+DOCKER_TAG := 0.8.0-alpha
 USER_ID := $(shell id -u)
 USER_GROUP = $(shell id -g)
 
@@ -105,17 +105,26 @@ build-go:
 	go build ./...
 
 test:
-	RUST_BACKTRACE=1 go test -v ./api .
+	RUST_BACKTRACE=1 go test -v ./api ./types .
 
+# we should build all the docker images locally ONCE and publish them
 docker-image-centos7:
-	docker build . -t go-cosmwasm:$(DOCKER_TAG)-centos7 -f ./Dockerfile.centos7
+	docker build . -t cosmwasm/go-ext-builder:$(DOCKER_TAG)-centos7 -f ./Dockerfile.centos7
 
 docker-image-cross:
-	docker build . -t go-cosmwasm:$(DOCKER_TAG)-cross -f ./Dockerfile.cross
+	docker build . -t cosmwasm/go-ext-builder:$(DOCKER_TAG)-cross -f ./Dockerfile.cross
 
-release: docker-image-cross docker-image-centos7
-	docker run --rm -u $(USER_ID):$(USER_GROUP) -v $(shell pwd):/code go-cosmwasm:$(DOCKER_TAG)-cross
-	docker run --rm -u $(USER_ID):$(USER_GROUP) -v $(shell pwd):/code go-cosmwasm:$(DOCKER_TAG)-centos7
+docker-images: docker-image-centos7 docker-image-cross
+
+docker-publish: docker-images
+	docker push cosmwasm/go-ext-builder:$(DOCKER_TAG)-cross
+	docker push cosmwasm/go-ext-builder:$(DOCKER_TAG)-centos7
+
+# and use them to compile release builds
+release:
+	docker run --rm -u $(USER_ID):$(USER_GROUP) -v $(shell pwd):/code cosmwasm/go-ext-builder:$(DOCKER_TAG)-cross
+	rm -rf target/release
+	docker run --rm -u $(USER_ID):$(USER_GROUP) -v $(shell pwd):/code cosmwasm/go-ext-builder:$(DOCKER_TAG)-centos7
 
 .PHONY: clean
 clean:

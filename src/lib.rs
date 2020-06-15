@@ -110,12 +110,7 @@ pub extern "C" fn init_node(
         Some(r) => r,
     };
 
-    let result = match untrusted_init_node(
-        pk_slice.as_ptr(),
-        pk_slice.len() as u32,
-        encrypted_seed_slice.as_ptr(),
-        encrypted_seed_slice.len() as u32,
-    ) {
+    let result = match untrusted_init_node(pk_slice, encrypted_seed_slice) {
         Ok(_) => {
             clear_error();
             true

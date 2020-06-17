@@ -18,7 +18,7 @@ use std::str::from_utf8;
 
 use crate::error::{clear_error, handle_c_error, set_error, Error};
 
-use cosmwasm_sgx_vm::instance::untrusted_init_bootstrap;
+use cosmwasm_sgx_vm::untrusted_init_bootstrap;
 use cosmwasm_sgx_vm::{
     call_handle_raw, call_init_raw, call_query_raw, features_from_csv, Checksum, CosmCache, Extern,
 };
@@ -51,9 +51,9 @@ fn to_cache(ptr: *mut cache_t) -> Option<&'static mut CosmCache<DB, GoApi, GoQue
 #[no_mangle]
 pub extern "C" fn get_encrypted_seed(cert: Buffer, err: Option<&mut Buffer>) -> Buffer {
     info!("Hello from get_encrypted_seed");
-    let cert_slice = match cert.read() {
+    let cert_slice = match unsafe { cert.read() } {
         None => {
-            set_error("Attestation Certificate is empty".to_string(), err);
+            set_error(Error::vm_err("Attestation Certificate is empty"), err);
             return Buffer::default();
         }
         Some(r) => r,
@@ -62,7 +62,7 @@ pub extern "C" fn get_encrypted_seed(cert: Buffer, err: Option<&mut Buffer>) -> 
     let result = match untrusted_get_encrypted_seed(cert_slice) {
         Err(e) => {
             error!("Error :(");
-            set_error(e.to_string(), err);
+            set_error(Error::vm_err(e.to_string()), err);
             return Buffer::default();
         }
         Ok(r) => {
@@ -79,7 +79,7 @@ pub extern "C" fn init_bootstrap(err: Option<&mut Buffer>) -> Buffer {
     match untrusted_init_bootstrap() {
         Err(e) => {
             error!("Error :(");
-            set_error(e.to_string(), err);
+            set_error(Error::vm_err(e.to_string()), err);
             Buffer::default()
         }
         Ok(r) => {
@@ -95,16 +95,16 @@ pub extern "C" fn init_node(
     encrypted_seed: Buffer,
     err: Option<&mut Buffer>,
 ) -> bool {
-    let pk_slice = match master_cert.read() {
+    let pk_slice = match unsafe { master_cert.read() } {
         None => {
-            set_error("Public key is empty".to_string(), err);
+            set_error(Error::vm_err("Public key is empty"), err);
             return false;
         }
         Some(r) => r,
     };
-    let encrypted_seed_slice = match encrypted_seed.read() {
+    let encrypted_seed_slice = match unsafe { encrypted_seed.read() } {
         None => {
-            set_error("Encrypted seed is empty".to_string(), err);
+            set_error(Error::vm_err("Encrypted seed is empty"), err);
             return false;
         }
         Some(r) => r,
@@ -116,7 +116,7 @@ pub extern "C" fn init_node(
             true
         }
         Err(e) => {
-            set_error(e.to_string(), err);
+            set_error(Error::vm_err(e.to_string()), err);
             false
         }
     };
@@ -127,7 +127,7 @@ pub extern "C" fn init_node(
 #[no_mangle]
 pub extern "C" fn create_attestation_report(err: Option<&mut Buffer>) -> bool {
     if let Err(status) = create_attestation_report_u() {
-        set_error(status.to_string(), err);
+        set_error(Error::vm_err(status.to_string()), err);
         return false;
     }
     clear_error();
@@ -414,7 +414,7 @@ pub extern "C" fn key_gen(err: Option<&mut Buffer>) -> Buffer {
     match untrusted_key_gen() {
         Err(e) => {
             error!("Error :(");
-            set_error(e.to_string(), err);
+            set_error(Error::vm_err(e.to_string()), err);
             Buffer::default()
         }
         Ok(r) => {

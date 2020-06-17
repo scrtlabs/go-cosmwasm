@@ -1,8 +1,9 @@
-use crate::iterator::GoIter;
-use cosmwasm_sgx_vm::{FfiResult, ReadonlyStorage, Storage, StorageIteratorItem};
+use cosmwasm_sgx_vm::{FfiError, FfiResult, ReadonlyStorage, Storage, StorageIterator};
+use std::convert::TryInto;
 
 use crate::error::GoResult;
 use crate::gas_meter::gas_meter_t;
+use crate::iterator::GoIter;
 use crate::memory::Buffer;
 
 // this represents something passed in from the caller side of FFI
@@ -51,13 +52,12 @@ impl ReadonlyStorage for DB {
         )
         .into();
         let _key = unsafe { key_buf.consume() };
-        let mut go_result: FfiResult<()> = go_result.into();
-        if let Err(ref mut error) = go_result {
-            error.set_message(format!(
+        let go_result: FfiResult<()> = go_result.try_into().unwrap_or_else(|_| {
+            Err(FfiError::other(format!(
                 "Failed to read a key in the db: {}",
                 String::from_utf8_lossy(key)
-            ));
-        }
+            )))
+        });
         go_result?;
 
         if result_buf.ptr.is_null() {
@@ -78,7 +78,7 @@ impl ReadonlyStorage for DB {
         start: Option<&[u8]>,
         end: Option<&[u8]>,
         order: cosmwasm_std::Order,
-    ) -> FfiResult<(Box<dyn Iterator<Item = StorageIteratorItem> + 'a>, u64)> {
+    ) -> FfiResult<(Box<dyn StorageIterator + 'a>, u64)> {
         // returns nul pointer in Buffer in none, otherwise proper buffer
         let start_buf = start
             .map(|s| Buffer::from_vec(s.to_vec()))
@@ -100,15 +100,13 @@ impl ReadonlyStorage for DB {
         .into();
         let _start = unsafe { start_buf.consume() };
         let _end = unsafe { end_buf.consume() };
-
-        let mut go_result: FfiResult<()> = go_result.into();
-        if let Err(ref mut error) = go_result {
-            error.set_message(format!(
+        let go_result: FfiResult<()> = go_result.try_into().unwrap_or_else(|_| {
+            Err(FfiError::other(format!(
                 "Failed to read the next key between {:?} and {:?}",
                 start.map(String::from_utf8_lossy),
                 end.map(String::from_utf8_lossy),
-            ));
-        }
+            )))
+        });
         go_result?;
         Ok((Box::new(iter), used_gas))
     }
@@ -129,13 +127,12 @@ impl Storage for DB {
         .into();
         let _key = unsafe { key_buf.consume() };
         let _value = unsafe { value_buf.consume() };
-        let mut go_result: FfiResult<()> = go_result.into();
-        if let Err(ref mut error) = go_result {
-            error.set_message(format!(
+        let go_result: FfiResult<()> = go_result.try_into().unwrap_or_else(|_| {
+            Err(FfiError::other(format!(
                 "Failed to set a key in the db: {}",
                 String::from_utf8_lossy(key),
-            ));
-        }
+            )))
+        });
         go_result.and(Ok(used_gas))
     }
 
@@ -150,13 +147,12 @@ impl Storage for DB {
         )
         .into();
         let _key = unsafe { key_buf.consume() };
-        let mut go_result: FfiResult<()> = go_result.into();
-        if let Err(ref mut error) = go_result {
-            error.set_message(format!(
+        let go_result: FfiResult<()> = go_result.try_into().unwrap_or_else(|_| {
+            Err(FfiError::other(format!(
                 "Failed to delete a key in the db: {}",
                 String::from_utf8_lossy(key),
-            ));
-        }
+            )))
+        });
         go_result.and(Ok(used_gas))
     }
 }

@@ -95,7 +95,7 @@ type Lookup struct {
 	db *dbm.MemDB
 }
 
-func NewLookup() Lookup {
+func NewLookup() KVStore {
 	return Lookup{
 		db: dbm.NewMemDB(),
 	}
@@ -214,20 +214,20 @@ func TestMockApi(t *testing.T) {
 /**** MockQuerier ****/
 
 type MockQuerier struct {
-	Bank   BankQuerier
-	Custom CustomQuerier
+	Bank    BankQuerier
+	Custom  CustomQuerier
 	usedGas uint64
 }
 
 var _ types.Querier = MockQuerier{}
 
-func DefaultQuerier(contractAddr string, coins types.Coins) MockQuerier {
+func DefaultQuerier(contractAddr string, coins types.Coins) Querier {
 	balances := map[string]types.Coins{
 		contractAddr: coins,
 	}
 	return MockQuerier{
-		Bank:   NewBankQuerier(balances),
-		Custom: NoCustom{},
+		Bank:    NewBankQuerier(balances),
+		Custom:  NoCustom{},
 		usedGas: 0,
 	}
 }

@@ -1,7 +1,9 @@
+use cosmwasm_sgx_vm::{FfiError, FfiResult, NextItem, StorageIterator};
+use std::convert::TryInto;
+
 use crate::error::GoResult;
 use crate::gas_meter::gas_meter_t;
 use crate::memory::Buffer;
-use cosmwasm_sgx_vm::{FfiError, FfiResult, StorageIteratorItem};
 
 // this represents something passed in from the caller side of FFI
 #[repr(C)]
@@ -36,13 +38,11 @@ impl Default for GoIter {
     }
 }
 
-impl Iterator for GoIter {
-    type Item = StorageIteratorItem;
-
-    fn next(&mut self) -> Option<Self::Item> {
+impl StorageIterator for GoIter {
+    fn next(&mut self) -> FfiResult<NextItem> {
         let next_db = match self.vtable.next_db {
             Some(f) => f,
-            None => return Some(Err(FfiError::other("iterator vtable not set"))),
+            None => return Err(FfiError::other("iterator vtable not set")),
         };
 
         let mut key_buf = Buffer::default();
@@ -56,13 +56,10 @@ impl Iterator for GoIter {
             &mut value_buf as *mut Buffer,
         )
         .into();
-        let mut go_result: FfiResult<()> = go_result.into();
-        if let Err(ref mut error) = go_result {
-            error.set_message("Failed to fetch next item from iterator");
-        }
-        if let Err(err) = go_result {
-            return Some(Err(err));
-        }
+        let go_result: FfiResult<()> = go_result
+            .try_into()
+            .unwrap_or_else(|_| Err(FfiError::other("Failed to fetch next item from iterator")));
+        go_result?;
 
         let okey = unsafe { key_buf.read() };
         match okey {
@@ -70,14 +67,14 @@ impl Iterator for GoIter {
                 let value = unsafe { value_buf.read() };
                 if let Some(value) = value {
                     let kv = (key.to_vec(), value.to_vec());
-                    Some(Ok((kv, used_gas)))
+                    Ok((Some(kv), used_gas))
                 } else {
-                    Some(Err(FfiError::other(
+                    Err(FfiError::other(
                         "Failed to read value while reading the next key in the db",
-                    )))
+                    ))
                 }
             }
-            None => None,
+            None => Ok((None, used_gas)),
         }
     }
 }

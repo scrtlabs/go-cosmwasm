@@ -2,7 +2,6 @@ package cosmwasm
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/enigmampc/EnigmaBlockchain/go-cosmwasm/api"
@@ -82,9 +81,6 @@ func (w *Wasmer) GetCode(code CodeID) (WasmCode, error) {
 //
 // Under the hood, we may recompile the wasm, use a cached native compile, or even use a cached instance
 // for performance.
-//
-// TODO: clarify which errors are returned? vm failure. out of gas. code unauthorized.
-// TODO: add callback for querying into other modules
 func (w *Wasmer) Instantiate(
 	code CodeID,
 	env types.Env,
@@ -99,7 +95,7 @@ func (w *Wasmer) Instantiate(
 	if err != nil {
 		return nil, nil, 0, err
 	}
-	data, gasUsed, err := api.Instantiate(w.cache, code, paramBin, initMsg, gasMeter, store, &goapi, querier, gasLimit)
+	data, gasUsed, err := api.Instantiate(w.cache, code, paramBin, initMsg, &gasMeter, &store, &goapi, &querier, gasLimit)
 	if err != nil {
 		return nil, nil, gasUsed, err
 	}
@@ -122,8 +118,6 @@ func (w *Wasmer) Instantiate(
 //
 // The caller is responsible for passing the correct `store` (which must have been initialized exactly once),
 // and setting the env with relevent info on this instance (address, balance, etc)
-//
-// TODO: add callback for querying into other modules
 func (w *Wasmer) Execute(
 	code CodeID,
 	env types.Env,
@@ -138,7 +132,7 @@ func (w *Wasmer) Execute(
 	if err != nil {
 		return nil, 0, err
 	}
-	return api.Handle(w.cache, code, paramBin, executeMsg, gasMeter, store, &goapi, querier, gasLimit)
+	return api.Handle(w.cache, code, paramBin, executeMsg, &gasMeter, &store, &goapi, &querier, gasLimit)
 }
 
 // Query allows a client to execute a contract-specific query. If the result is not empty, it should be
@@ -153,7 +147,7 @@ func (w *Wasmer) Query(
 	gasMeter api.GasMeter,
 	gasLimit uint64,
 ) ([]byte, uint64, error) {
-	data, gasUsed, err := api.Query(w.cache, code, queryMsg, gasMeter, store, &goapi, querier, gasLimit)
+	data, gasUsed, err := api.Query(w.cache, code, queryMsg, &gasMeter, &store, &goapi, &querier, gasLimit)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -169,18 +163,29 @@ func (w *Wasmer) Query(
 	return resp.Ok, gasUsed, nil
 }
 
-// Migrate is a stub implementation right now for testing wasmd calls. todo: proper implementation
+// Migrate will migrate an existing contract to a new code binary.
+// This takes storage of the data from the original contract and the CodeID of the new contract that should
+// replace it. This allows it to run a migration step if needed, or return an error if unable to migrate
+// the given data.
+//
+// MigrateMsg has some data on how to perform the migration.
 func (w *Wasmer) Migrate(code CodeID, env types.Env, migrateMsg []byte, store KVStore, goapi GoAPI, querier Querier, gasMeter api.GasMeter, gasLimit uint64) (*types.Result, uint64, error) {
-	var gasUsed uint64 = 10000
-	switch n := len(migrateMsg); {
-	case n < 6:
-		return &types.Result{
-			Data: "my-migration-response-data",
-			Log:  []types.LogAttribute{{"msg", "test stub"}},
-		}, gasUsed, nil
-	case n < 100:
-		return nil, gasUsed, errors.New("test error")
-	default:
-		panic("test panic")
+	paramBin, err := json.Marshal(env)
+	if err != nil {
+		return nil, 0, err
 	}
+	data, gasUsed, err := api.Migrate(w.cache, code, paramBin, migrateMsg, &gasMeter, &store, &goapi, &querier, gasLimit)
+	if err != nil {
+		return nil, gasUsed, err
+	}
+
+	var resp types.CosmosResponse
+	err = json.Unmarshal(data, &resp)
+	if err != nil {
+		return nil, gasUsed, err
+	}
+	if resp.Err != nil {
+		return nil, gasUsed, fmt.Errorf("%v", resp.Err)
+	}
+	return resp.Ok, gasUsed, nil
 }

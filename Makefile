@@ -1,9 +1,9 @@
-.PHONY: all build build-rust build-go test docker-image docker-build docker-image-centos7
+.PHONY: all build build-rust build-go test docker-image docker-image-centos7 docker-image-cross
 
 TOP_DIR := ../third_party/build
 include $(TOP_DIR)/buildenv.mk
 
-DOCKER_TAG := 0.8.0-alpha
+DOCKER_TAG := 0.8.2
 USER_ID := $(shell id -u)
 USER_GROUP = $(shell id -g)
 
@@ -114,17 +114,34 @@ docker-image-centos7:
 docker-image-cross:
 	docker build . -t cosmwasm/go-ext-builder:$(DOCKER_TAG)-cross -f ./Dockerfile.cross
 
-docker-images: docker-image-centos7 docker-image-cross
+docker-image-alpine:
+	docker build . -t cosmwasm/go-ext-builder:$(DOCKER_TAG)-alpine -f ./Dockerfile.alpine
+
+docker-images: docker-image-centos7 docker-image-cross docker-image-alpine
 
 docker-publish: docker-images
 	docker push cosmwasm/go-ext-builder:$(DOCKER_TAG)-cross
 	docker push cosmwasm/go-ext-builder:$(DOCKER_TAG)-centos7
+	docker push cosmwasm/go-ext-builder:$(DOCKER_TAG)-alpine
 
 # and use them to compile release builds
 release:
+	rm -rf target/release
 	docker run --rm -u $(USER_ID):$(USER_GROUP) -v $(shell pwd):/code cosmwasm/go-ext-builder:$(DOCKER_TAG)-cross
 	rm -rf target/release
 	docker run --rm -u $(USER_ID):$(USER_GROUP) -v $(shell pwd):/code cosmwasm/go-ext-builder:$(DOCKER_TAG)-centos7
+
+test-alpine:
+	# build the muslc *.a file
+	rm -rf target/release/examples
+	docker run --rm -u $(USER_ID):$(USER_GROUP) -v $(shell pwd):/code cosmwasm/go-ext-builder:$(DOCKER_TAG)-alpine
+	# try running go tests using this lib with muslc
+	docker run --rm -u $(USER_ID):$(USER_GROUP) -v $(shell pwd):/code -w /code cosmwasm/go-ext-builder:$(DOCKER_TAG)-alpine go build -tags muslc .
+	docker run --rm -u $(USER_ID):$(USER_GROUP) -v $(shell pwd):/code -w /code cosmwasm/go-ext-builder:$(DOCKER_TAG)-alpine go test -tags muslc ./api ./types
+	# build a go binary
+	docker run --rm -u $(USER_ID):$(USER_GROUP) -v $(shell pwd):/code -w /code cosmwasm/go-ext-builder:$(DOCKER_TAG)-alpine go build -tags muslc -o muslc.exe ./cmd
+	# run static binary locally (not dlls)
+	./muslc.exe ./api/testdata/hackatom.wasm
 
 .PHONY: clean
 clean:

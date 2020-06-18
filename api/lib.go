@@ -32,12 +32,14 @@ func InitBootstrap() ([]byte, error) {
 	if err != nil {
 		return nil, errorWithMessage(err, errmsg)
 	}
-	return receiveSlice(res), nil
+	return receiveVector(res), nil
 }
 
 func LoadSeedToEnclave(masterCert []byte, seed []byte) (bool, error) {
 	pkSlice := sendSlice(masterCert)
+	defer freeAfterSend(pkSlice)
 	seedSlice := sendSlice(seed)
+	defer freeAfterSend(seedSlice)
 	errmsg := C.Buffer{}
 
 	_, err := C.init_node(pkSlice, seedSlice, &errmsg)
@@ -213,7 +215,7 @@ func KeyGen() ([]byte, error) {
 	if err != nil {
 		return nil, errorWithMessage(err, errmsg)
 	}
-	return receiveSlice(res), nil
+	return receiveVector(res), nil
 }
 
 // KeyGen Seng KeyGen request to enclave
@@ -229,11 +231,12 @@ func CreateAttestationReport() (bool, error) {
 func GetEncryptedSeed(cert []byte) ([]byte, error) {
 	errmsg := C.Buffer{}
 	certSlice := sendSlice(cert)
+	defer freeAfterSend(certSlice)
 	res, err := C.get_encrypted_seed(certSlice, &errmsg)
 	if err != nil {
 		return nil, errorWithMessage(err, errmsg)
 	}
-	return receiveSlice(res), nil
+	return receiveVector(res), nil
 }
 
 /**** To error module ***/

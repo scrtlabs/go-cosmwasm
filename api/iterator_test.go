@@ -14,9 +14,13 @@ import (
 
 type queueData struct {
 	id      []byte
-	store   KVStore
+	store   *Lookup
 	api     *GoAPI
 	querier types.Querier
+}
+
+func (q queueData) Store(meter MockGasMeter) KVStore {
+	return q.store.WithGasMeter(meter)
 }
 
 func setupQueueContractWithData(t *testing.T, cache Cache, values ...int) queueData {
@@ -24,20 +28,21 @@ func setupQueueContractWithData(t *testing.T, cache Cache, values ...int) queueD
 
 	gasMeter1 := NewMockGasMeter(100000000)
 	// instantiate it with this store
-	store := NewLookup()
+	store := NewLookup(gasMeter1)
 	api := NewMockAPI()
 	querier := DefaultQuerier(mockContractAddr, types.Coins{types.NewCoin(100, "ATOM")})
-	params, err := json.Marshal(mockEnv(binaryAddr("creator")))
+	params, err := json.Marshal(mockEnv("creator"))
 	require.NoError(t, err)
 	msg := []byte(`{}`)
 
-	res, _, err := Instantiate(cache, id, params, msg, &gasMeter1, store, api, &querier, 100000000)
+	igasMeter1 := GasMeter(gasMeter1)
+	res, _, err := Instantiate(cache, id, params, msg, &igasMeter1, store, api, &querier, 100000000)
 	require.NoError(t, err)
 	requireOkResponse(t, res, 0)
 
 	for _, value := range values {
 		// push 17
-		gasMeter2 := NewMockGasMeter(100000000)
+		var gasMeter2 GasMeter = NewMockGasMeter(100000000)
 		push := []byte(fmt.Sprintf(`{"enqueue":{"value":%d}}`, value))
 		res, _, err = Handle(cache, id, params, push, &gasMeter2, store, api, &querier, 100000000)
 		require.NoError(t, err)
@@ -61,12 +66,14 @@ func TestQueueIterator(t *testing.T) {
 	defer cleanup()
 
 	setup := setupQueueContract(t, cache)
-	id, store, querier, api := setup.id, setup.store, setup.querier, setup.api
+	id, querier, api := setup.id, setup.querier, setup.api
 
 	// query the sum
 	gasMeter := NewMockGasMeter(100000000)
+	igasMeter := GasMeter(gasMeter)
+	store := setup.Store(gasMeter)
 	query := []byte(`{"sum":{}}`)
-	data, _, err := Query(cache, id, query, &gasMeter, store, api, &querier, 100000000)
+	data, _, err := Query(cache, id, query, &igasMeter, store, api, &querier, 100000000)
 	require.NoError(t, err)
 	var qres types.QueryResponse
 	err = json.Unmarshal(data, &qres)
@@ -76,7 +83,7 @@ func TestQueueIterator(t *testing.T) {
 
 	// query reduce (multiple iterators at once)
 	query = []byte(`{"reducer":{}}`)
-	data, _, err = Query(cache, id, query, &gasMeter, store, api, &querier, 100000000)
+	data, _, err = Query(cache, id, query, &igasMeter, store, api, &querier, 100000000)
 	require.NoError(t, err)
 	var reduced types.QueryResponse
 	err = json.Unmarshal(data, &reduced)
@@ -96,12 +103,14 @@ func TestQueueIteratorRaces(t *testing.T) {
 	contract3 := setupQueueContractWithData(t, cache, 11, 6, 2)
 
 	reduceQuery := func(t *testing.T, setup queueData, expected string) {
-		id, store, querier, api := setup.id, setup.store, setup.querier, setup.api
+		id, querier, api := setup.id, setup.querier, setup.api
+		gasMeter := NewMockGasMeter(100000000)
+		igasMeter := GasMeter(gasMeter)
+		store := setup.Store(gasMeter)
 
 		// query reduce (multiple iterators at once)
 		query := []byte(`{"reducer":{}}`)
-		gasMeter := NewMockGasMeter(100000000)
-		data, _, err := Query(cache, id, query, &gasMeter, store, api, &querier, 100000000)
+		data, _, err := Query(cache, id, query, &igasMeter, store, api, &querier, 100000000)
 		require.NoError(t, err)
 		var reduced types.QueryResponse
 		err = json.Unmarshal(data, &reduced)

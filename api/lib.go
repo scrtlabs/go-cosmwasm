@@ -1,3 +1,5 @@
+// +build !secretcli
+
 package api
 
 // #include <stdlib.h>
@@ -8,7 +10,7 @@ import (
 	"fmt"
 	"syscall"
 
-	"github.com/enigmampc/EnigmaBlockchain/go-cosmwasm/types"
+	"github.com/enigmampc/SecretNetwork/go-cosmwasm/types"
 )
 
 // nice aliases to the rust names
@@ -23,6 +25,16 @@ type cint = C.int
 
 type Cache struct {
 	ptr *C.cache_t
+}
+
+func HealthCheck() ([]byte, error) {
+	errmsg := C.Buffer{}
+
+	res, err := C.get_health_check(&errmsg)
+	if err != nil {
+		return nil, errorWithMessage(err, errmsg)
+	}
+	return receiveVector(res), nil
 }
 
 func InitBootstrap() ([]byte, error) {

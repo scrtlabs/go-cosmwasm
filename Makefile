@@ -1,5 +1,7 @@
 .PHONY: all build build-rust build-go test docker-image docker-image-centos7 docker-image-cross
 
+BUILD_PROFILE ?= release
+
 TOP_DIR := ../third_party/build
 include $(TOP_DIR)/buildenv.mk
 
@@ -37,7 +39,6 @@ endif
 SGX_COMMON_CFLAGS += -fstack-protector
 
 CUSTOM_EDL_PATH := ../third_party/vendor/sgx_edl/edl
-App_Rust_Flags := --release
 App_SRC_Files := $(shell find ../cosmwasm/packages/sgx-vm/ -type f -name '*.rs') \
     $(shell find ../cosmwasm/packages/sgx-vm/ -type f -name 'Cargo.toml') \
     $(shell find ./ -type f -name '*.rs') \
@@ -52,19 +53,9 @@ all: build test
 
 build: build-rust build-go
 
-# don't strip for now, for better error reporting
-# build-rust: build-rust-release strip
-build-rust: build-rust-release
-
-# use debug build for quick testing
-build-rust-debug: librust_cosmwasm_enclave.signed.so lib/libEnclave_u.a
-	cargo build --features backtraces
-	cp target/debug/libgo_cosmwasm.$(DLL_EXT) api
-
-# use release build to actually ship - smaller and much faster
-build-rust-release: librust_cosmwasm_enclave.signed.so lib/libEnclave_u.a
-	cargo build --release --features backtraces
-	cp target/release/libgo_cosmwasm.$(DLL_EXT) api
+build-rust: librust_cosmwasm_enclave.signed.so lib/libEnclave_u.a
+	cargo build -Z unstable-options --profile $(BUILD_PROFILE) --features backtraces
+	cp target/$(BUILD_PROFILE)/libgo_cosmwasm.$(DLL_EXT) api
 	@ #this pulls out ELF symbols, 80% size reduction!
 
 librust_cosmwasm_enclave.signed.so: build-enclave
@@ -86,7 +77,7 @@ lib/libEnclave_u.a: $(Enclave_Path)/Enclave.edl target/headers/enclave-ffi-types
 # So here we do the minimum required work to generate this file correctly, and copy it to the right location
 target/headers/enclave-ffi-types.h: build-enclave
 	mkdir -p $(dir $@)
-	cp ../cosmwasm/packages/wasmi-runtime/$(@) $@
+	cp $(Enclave_Path)/$@ $@
 
 .PHONY: build-enclave
 build-enclave:
@@ -150,4 +141,4 @@ clean:
 
 .PHONY: clean-all
 clean-all: clean
-	$(MAKE) -C ../cosmwasm/packages/wasmi-runtime clean
+	$(MAKE) -C $(Enclave_Path) clean

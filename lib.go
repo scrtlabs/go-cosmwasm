@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/enigmampc/EnigmaBlockchain/go-cosmwasm/api"
-	"github.com/enigmampc/EnigmaBlockchain/go-cosmwasm/types"
+	"github.com/enigmampc/SecretNetwork/go-cosmwasm/api"
+	"github.com/enigmampc/SecretNetwork/go-cosmwasm/types"
 )
 
 // CodeID represents an ID for a given wasm code blob, must be generated from this library
@@ -106,6 +106,7 @@ func (w *Wasmer) Instantiate(
 	if err != nil {
 		return nil, nil, gasUsed, err
 	}
+
 	if resp.Err != nil {
 		return nil, nil, gasUsed, fmt.Errorf("%v", resp.Err)
 	}
@@ -135,14 +136,22 @@ func (w *Wasmer) Execute(
 
 	data, gasUsed, err := api.Handle(w.cache, code, paramBin, executeMsg, &gasMeter, &store, &goapi, &querier, gasLimit)
 
-	var resp types.Result
+	if err != nil {
+		return nil, gasUsed, err
+	}
+
+	var resp types.CosmosResponse
 	err = json.Unmarshal(data, &resp)
 
 	if err != nil {
 		return nil, gasUsed, err
 	}
 
-	return &resp, gasUsed, nil
+	if resp.Err != nil {
+		return nil, gasUsed, fmt.Errorf("%v", resp.Err)
+	}
+
+	return resp.Ok, gasUsed, nil
 }
 
 // Query allows a client to execute a contract-specific query. If the result is not empty, it should be
@@ -159,7 +168,7 @@ func (w *Wasmer) Query(
 ) ([]byte, uint64, error) {
 	data, gasUsed, err := api.Query(w.cache, code, queryMsg, &gasMeter, &store, &goapi, &querier, gasLimit)
 	if err != nil {
-		return nil, 0, err
+		return nil, gasUsed, err
 	}
 
 	var resp types.QueryResponse

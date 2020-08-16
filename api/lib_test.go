@@ -115,12 +115,12 @@ func TestInstantiate(t *testing.T) {
 	require.NoError(t, err)
 	msg := []byte(`{"verifier": "fred", "beneficiary": "bob"}`)
 
-	res, cost, err := Instantiate(cache, id, params, msg, &gasMeter, &store, api, &querier, 100000000)
+	res, cost, err := Instantiate(cache, id, params, msg, &gasMeter, store, api, &querier, 100000000)
 	require.NoError(t, err)
 	requireOkResponse(t, res, 0)
 	assert.Equal(t, uint64(0x11f57), cost)
 
-	var resp types.CosmosResponse
+	var resp types.InitResult
 	err = json.Unmarshal(res, &resp)
 	require.NoError(t, err)
 	require.Nil(t, resp.Err)
@@ -145,7 +145,7 @@ func TestHandle(t *testing.T) {
 	msg := []byte(`{"verifier": "fred", "beneficiary": "bob"}`)
 
 	start := time.Now()
-	res, cost, err := Instantiate(cache, id, params, msg, &gasMeter1, &store, api, &querier, 100000000)
+	res, cost, err := Instantiate(cache, id, params, msg, &gasMeter1, store, api, &querier, 100000000)
 	diff := time.Now().Sub(start)
 	require.NoError(t, err)
 	requireOkResponse(t, res, 0)
@@ -157,14 +157,14 @@ func TestHandle(t *testing.T) {
 	params, err = json.Marshal(mockEnv(binaryAddr("fred")))
 	require.NoError(t, err)
 	start = time.Now()
-	res, cost, err = Handle(cache, id, params, []byte(`{"release":{}}`), &gasMeter2, &store, api, &querier, 100000000)
+	res, cost, err = Handle(cache, id, params, []byte(`{"release":{}}`), &gasMeter2, store, api, &querier, 100000000)
 	diff = time.Now().Sub(start)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(0x1c135), cost)
 	fmt.Printf("Time (%d gas): %s\n", cost, diff)
 
 	// make sure it read the balance properly and we got 250 atoms
-	var resp types.CosmosResponse
+	var resp types.HandleResult
 	err = json.Unmarshal(res, &resp)
 	require.NoError(t, err)
 	require.Nil(t, resp.Err)
@@ -194,13 +194,13 @@ func TestMigrate(t *testing.T) {
 	require.NoError(t, err)
 	msg := []byte(`{"verifier": "fred", "beneficiary": "bob"}`)
 
-	res, _, err := Instantiate(cache, id, params, msg, &gasMeter, &store, api, &querier, 100000000)
+	res, _, err := Instantiate(cache, id, params, msg, &gasMeter, store, api, &querier, 100000000)
 	require.NoError(t, err)
 	requireOkResponse(t, res, 0)
 
 	// verifier is fred
 	query := []byte(`{"verifier":{}}`)
-	data, _, err := Query(cache, id, query, &gasMeter, &store, api, &querier, 100000000)
+	data, _, err := Query(cache, id, query, &gasMeter, store, api, &querier, 100000000)
 	require.NoError(t, err)
 	var qres types.QueryResponse
 	err = json.Unmarshal(data, &qres)
@@ -212,11 +212,11 @@ func TestMigrate(t *testing.T) {
 	// we use the same code blob as we are testing hackatom self-migration
 	params, err = json.Marshal(mockEnv(binaryAddr("fred")))
 	require.NoError(t, err)
-	res, _, err = Migrate(cache, id, params, []byte(`{"verifier":"alice"}`), &gasMeter, &store, api, &querier, 100000000)
+	res, _, err = Migrate(cache, id, params, []byte(`{"verifier":"alice"}`), &gasMeter, store, api, &querier, 100000000)
 	require.NoError(t, err)
 
 	// should update verifier to alice
-	data, _, err = Query(cache, id, query, &gasMeter, &store, api, &querier, 100000000)
+	data, _, err = Query(cache, id, query, &gasMeter, store, api, &querier, 100000000)
 	require.NoError(t, err)
 	var qres2 types.QueryResponse
 	err = json.Unmarshal(data, &qres2)
@@ -239,7 +239,7 @@ func TestMultipleInstances(t *testing.T) {
 	params, err := json.Marshal(mockEnv(binaryAddr("regen")))
 	require.NoError(t, err)
 	msg := []byte(`{"verifier": "fred", "beneficiary": "bob"}`)
-	res, cost, err := Instantiate(cache, id, params, msg, &gasMeter1, &store1, api, &querier, 100000000)
+	res, cost, err := Instantiate(cache, id, params, msg, &gasMeter1, store1, api, &querier, 100000000)
 	require.NoError(t, err)
 	requireOkResponse(t, res, 0)
 	assert.Equal(t, uint64(0x11f57), cost)
@@ -250,7 +250,7 @@ func TestMultipleInstances(t *testing.T) {
 	params, err = json.Marshal(mockEnv(binaryAddr("chorus")))
 	require.NoError(t, err)
 	msg = []byte(`{"verifier": "mary", "beneficiary": "sue"}`)
-	res, cost, err = Instantiate(cache, id, params, msg, &gasMeter2, &store2, api, &querier, 100000000)
+	res, cost, err = Instantiate(cache, id, params, msg, &gasMeter2, store2, api, &querier, 100000000)
 	require.NoError(t, err)
 	requireOkResponse(t, res, 0)
 	assert.Equal(t, uint64(0x11f57), cost)
@@ -281,7 +281,7 @@ func TestMultipleInstances(t *testing.T) {
 }
 
 func requireOkResponse(t *testing.T, res []byte, expectedMsgs int) {
-	var resp types.CosmosResponse
+	var resp types.HandleResult
 	err := json.Unmarshal(res, &resp)
 	require.NoError(t, err)
 	require.Nil(t, resp.Err, "%v", resp.Err)
@@ -309,15 +309,15 @@ func createContract(t *testing.T, cache Cache, wasmFile string) []byte {
 }
 
 // exec runs the handle tx with the given signer
-func exec(t *testing.T, cache Cache, id []byte, signer string, store KVStore, api *GoAPI, querier Querier, gas uint64) types.CosmosResponse {
+func exec(t *testing.T, cache Cache, id []byte, signer string, store KVStore, api *GoAPI, querier Querier, gas uint64) types.HandleResult {
 	gasMeter := NewMockGasMeter(100000000)
 	params, err := json.Marshal(mockEnv(binaryAddr(signer)))
 	require.NoError(t, err)
-	res, cost, err := Handle(cache, id, params, []byte(`{"release":{}}`), &gasMeter, &store, api, &querier, 100000000)
+	res, cost, err := Handle(cache, id, params, []byte(`{"release":{}}`), &gasMeter, store, api, &querier, 100000000)
 	require.NoError(t, err)
 	assert.Equal(t, gas, cost)
 
-	var resp types.CosmosResponse
+	var resp types.HandleResult
 	err = json.Unmarshal(res, &resp)
 	require.NoError(t, err)
 	return resp
@@ -337,13 +337,13 @@ func TestQuery(t *testing.T) {
 	params, err := json.Marshal(mockEnv(binaryAddr("creator")))
 	require.NoError(t, err)
 	msg := []byte(`{"verifier": "fred", "beneficiary": "bob"}`)
-	_, _, err = Instantiate(cache, id, params, msg, &gasMeter1, &store, api, &querier, 100000000)
+	_, _, err = Instantiate(cache, id, params, msg, &gasMeter1, store, api, &querier, 100000000)
 	require.NoError(t, err)
 
 	// invalid query
 	gasMeter2 := NewMockGasMeter(100000000)
 	query := []byte(`{"Raw":{"val":"config"}}`)
-	data, _, err := Query(cache, id, query, &gasMeter2, &store, api, &querier, 100000000)
+	data, _, err := Query(cache, id, query, &gasMeter2, store, api, &querier, 100000000)
 	require.NoError(t, err)
 	var badResp types.QueryResponse
 	err = json.Unmarshal(data, &badResp)
@@ -358,7 +358,7 @@ func TestQuery(t *testing.T) {
 	// make a valid query
 	gasMeter3 := NewMockGasMeter(100000000)
 	query = []byte(`{"verifier":{}}`)
-	data, _, err = Query(cache, id, query, &gasMeter3, &store, api, &querier, 100000000)
+	data, _, err = Query(cache, id, query, &gasMeter3, store, api, &querier, 100000000)
 	require.NoError(t, err)
 	var qres types.QueryResponse
 	err = json.Unmarshal(data, &qres)
@@ -438,7 +438,7 @@ func TestHackatomQuerier(t *testing.T) {
 	// make a valid query to the other address
 	query := []byte(`{"other_balance":{"address":"foobar"}}`)
 	// TODO The query happens before the contract is initialized. How is this legal?
-	data, _, err := Query(cache, id, query, &gasMeter, &store, api, &querier, 100000000)
+	data, _, err := Query(cache, id, query, &gasMeter, store, api, &querier, 100000000)
 	require.NoError(t, err)
 	var qres types.QueryResponse
 	err = json.Unmarshal(data, &qres)
@@ -468,7 +468,7 @@ func TestCustomReflectQuerier(t *testing.T) {
 
 	// make a valid query to the other address
 	query := []byte(`{"reflect_custom":{"text":"small Frys :)"}}`)
-	data, _, err := Query(cache, id, query, &gasMeter, &store, api, &querier, 100000000)
+	data, _, err := Query(cache, id, query, &gasMeter, store, api, &querier, 100000000)
 	require.NoError(t, err)
 	var qres types.QueryResponse
 	err = json.Unmarshal(data, &qres)

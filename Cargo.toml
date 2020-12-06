@@ -10,7 +10,8 @@ readme = "README.md"
 exclude = [".circleci/*", ".gitignore"]
 
 [lib]
-crate-type = ["cdylib"]
+#crate-type = ["staticlib"]
+crate-type = ["cdylib", "lib"]
 
 # the example is to allow us to compile a muslc static lib with the same codebase as we compile the
 # normal dynamic libs (best workaround I could find to override crate-type on the command line)
@@ -25,17 +26,18 @@ circle-ci = { repository = "CosmWasm/go-cosmwasm", branch = "master" }
 maintenance = { status = "actively-developed" }
 
 [features]
-default = ["singlepass", "backtraces"]
+default = ["backtraces"]
 backtraces = ["snafu/backtraces"]
-singlepass = ["cosmwasm-vm/default-singlepass"]
-cranelift = ["cosmwasm-vm/default-cranelift"]
 
 [dependencies]
-cosmwasm-std = { version = "0.10.0", features = ["iterator"]}
-cosmwasm-vm = { version = "0.10.0", features = ["iterator"] }
+cosmwasm-std = { path = "../cosmwasm/packages/std", features = ["iterator"] }
+cosmwasm-sgx-vm = { path = "../cosmwasm/packages/sgx-vm", features = ["iterator"] }
 errno = "0.2"
 snafu = "0.6.3"
 serde_json = "1.0"
+ctor = "0.1.13"
+simple_logger = "1.6.0"
+log = "0.4.8"
 
 [dev-dependencies]
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
@@ -43,6 +45,7 @@ tempfile = "3.1.0"
 
 [build-dependencies]
 cbindgen = { version = "0.14" }
+sgx_edl = { git = "https://github.com/apache/teaclave-sgx-sdk.git", rev = "v1.1.2" }
 
 [profile.release]
 opt-level = 3

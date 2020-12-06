@@ -1,3 +1,5 @@
+// +build !secretcli
+
 package api
 
 // #include <stdlib.h>
@@ -8,13 +10,14 @@ import (
 	"fmt"
 	"syscall"
 
-	"github.com/CosmWasm/go-cosmwasm/types"
+	"github.com/enigmampc/SecretNetwork/go-cosmwasm/types"
 )
 
 // nice aliases to the rust names
 type i32 = C.int32_t
 type i64 = C.int64_t
 type u64 = C.uint64_t
+type u32 = C.uint32_t
 type u8 = C.uint8_t
 type u8_ptr = *C.uint8_t
 type usize = C.uintptr_t
@@ -22,6 +25,40 @@ type cint = C.int
 
 type Cache struct {
 	ptr *C.cache_t
+}
+
+func HealthCheck() ([]byte, error) {
+	errmsg := C.Buffer{}
+
+	res, err := C.get_health_check(&errmsg)
+	if err != nil {
+		return nil, errorWithMessage(err, errmsg)
+	}
+	return receiveVector(res), nil
+}
+
+func InitBootstrap() ([]byte, error) {
+	errmsg := C.Buffer{}
+
+	res, err := C.init_bootstrap(&errmsg)
+	if err != nil {
+		return nil, errorWithMessage(err, errmsg)
+	}
+	return receiveVector(res), nil
+}
+
+func LoadSeedToEnclave(masterCert []byte, seed []byte) (bool, error) {
+	pkSlice := sendSlice(masterCert)
+	defer freeAfterSend(pkSlice)
+	seedSlice := sendSlice(seed)
+	defer freeAfterSend(seedSlice)
+	errmsg := C.Buffer{}
+
+	_, err := C.init_node(pkSlice, seedSlice, &errmsg)
+	if err != nil {
+		return false, errorWithMessage(err, errmsg)
+	}
+	return true, nil
 }
 
 type Querier = types.Querier
@@ -209,6 +246,37 @@ func Query(
 		return nil, uint64(gasUsed), errorWithMessage(err, errmsg)
 	}
 	return receiveVector(res), uint64(gasUsed), nil
+}
+
+// KeyGen Send KeyGen request to enclave
+func KeyGen() ([]byte, error) {
+	errmsg := C.Buffer{}
+	res, err := C.key_gen(&errmsg)
+	if err != nil {
+		return nil, errorWithMessage(err, errmsg)
+	}
+	return receiveVector(res), nil
+}
+
+// KeyGen Seng KeyGen request to enclave
+func CreateAttestationReport() (bool, error) {
+	errmsg := C.Buffer{}
+	_, err := C.create_attestation_report(&errmsg)
+	if err != nil {
+		return false, errorWithMessage(err, errmsg)
+	}
+	return true, nil
+}
+
+func GetEncryptedSeed(cert []byte) ([]byte, error) {
+	errmsg := C.Buffer{}
+	certSlice := sendSlice(cert)
+	defer freeAfterSend(certSlice)
+	res, err := C.get_encrypted_seed(certSlice, &errmsg)
+	if err != nil {
+		return nil, errorWithMessage(err, errmsg)
+	}
+	return receiveVector(res), nil
 }
 
 /**** To error module ***/

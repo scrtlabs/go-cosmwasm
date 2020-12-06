@@ -15,12 +15,27 @@ pub use querier::GoQuerier;
 use std::convert::TryInto;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::str::from_utf8;
+// use std::Vec;
 
 use crate::error::{clear_error, handle_c_error, set_error, Error};
-use cosmwasm_vm::{
+
+use cosmwasm_sgx_vm::untrusted_init_bootstrap;
+use cosmwasm_sgx_vm::{
     call_handle_raw, call_init_raw, call_migrate_raw, call_query_raw, features_from_csv, Checksum,
     CosmCache, Extern,
 };
+use cosmwasm_sgx_vm::{
+    create_attestation_report_u, untrusted_get_encrypted_seed, untrusted_health_check,
+    untrusted_init_node, untrusted_key_gen,
+};
+
+use ctor::ctor;
+use log::*;
+
+#[ctor]
+fn init_logger() {
+    simple_logger::init_with_level(log::Level::Info).unwrap();
+}
 
 #[repr(C)]
 pub struct cache_t {}
@@ -32,6 +47,107 @@ fn to_cache(ptr: *mut cache_t) -> Option<&'static mut CosmCache<DB, GoApi, GoQue
         let c = unsafe { &mut *(ptr as *mut CosmCache<DB, GoApi, GoQuerier>) };
         Some(c)
     }
+}
+
+#[no_mangle]
+pub extern "C" fn get_health_check(err: Option<&mut Buffer>) -> Buffer {
+    match untrusted_health_check() {
+        Err(e) => {
+            set_error(Error::enclave_err(e.to_string()), err);
+            Buffer::default()
+        }
+        Ok(res) => {
+            clear_error();
+            Buffer::from_vec(format!("{}", res).into_bytes())
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn get_encrypted_seed(cert: Buffer, err: Option<&mut Buffer>) -> Buffer {
+    debug!("Called get_encrypted_seed");
+    let cert_slice = match unsafe { cert.read() } {
+        None => {
+            set_error(Error::empty_arg("attestation_cert"), err);
+            return Buffer::default();
+        }
+        Some(r) => r,
+    };
+    info!("Hello from right before untrusted_get_encrypted_seed");
+    match untrusted_get_encrypted_seed(cert_slice) {
+        Err(e) => {
+            // An error happened in the SGX sdk.
+            set_error(Error::enclave_err(e.to_string()), err);
+            Buffer::default()
+        }
+        Ok(Err(e)) => {
+            // An error was returned from the enclave.
+            set_error(Error::enclave_err(e.to_string()), err);
+            Buffer::default()
+        }
+        Ok(Ok(seed)) => {
+            clear_error();
+            Buffer::from_vec(seed.to_vec())
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn init_bootstrap(err: Option<&mut Buffer>) -> Buffer {
+    info!("Hello from right before init_bootstrap");
+    match untrusted_init_bootstrap() {
+        Err(e) => {
+            set_error(Error::enclave_err(e.to_string()), err);
+            Buffer::default()
+        }
+        Ok(r) => {
+            clear_error();
+            Buffer::from_vec(r.to_vec())
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn init_node(
+    master_cert: Buffer,
+    encrypted_seed: Buffer,
+    err: Option<&mut Buffer>,
+) -> bool {
+    let pk_slice = match unsafe { master_cert.read() } {
+        None => {
+            set_error(Error::empty_arg("master_cert"), err);
+            return false;
+        }
+        Some(r) => r,
+    };
+    let encrypted_seed_slice = match unsafe { encrypted_seed.read() } {
+        None => {
+            set_error(Error::empty_arg("encrypted_seed"), err);
+            return false;
+        }
+        Some(r) => r,
+    };
+
+    match untrusted_init_node(pk_slice, encrypted_seed_slice) {
+        Ok(_) => {
+            clear_error();
+            true
+        }
+        Err(e) => {
+            set_error(Error::enclave_err(e.to_string()), err);
+            false
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn create_attestation_report(err: Option<&mut Buffer>) -> bool {
+    if let Err(status) = create_attestation_report_u() {
+        set_error(Error::enclave_err(status.to_string()), err);
+        return false;
+    }
+    clear_error();
+    true
 }
 
 fn to_extern(storage: DB, api: GoApi, querier: GoQuerier) -> Extern<DB, GoApi, GoQuerier> {
@@ -361,4 +477,18 @@ fn do_query(
     *gas_used = instance.create_gas_report().used_internally;
     instance.recycle();
     Ok(res?)
+}
+
+#[no_mangle]
+pub extern "C" fn key_gen(err: Option<&mut Buffer>) -> Buffer {
+    match untrusted_key_gen() {
+        Err(e) => {
+            set_error(Error::enclave_err(e.to_string()), err);
+            Buffer::default()
+        }
+        Ok(r) => {
+            clear_error();
+            Buffer::from_vec(r.to_vec())
+        }
+    }
 }

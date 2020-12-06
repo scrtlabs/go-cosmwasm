@@ -1,4 +1,4 @@
-use cosmwasm_vm::FfiError;
+use cosmwasm_sgx_vm::FfiError;
 use std::fmt;
 
 use crate::Buffer;

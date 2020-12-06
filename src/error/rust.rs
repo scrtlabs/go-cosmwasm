@@ -1,6 +1,6 @@
 use errno::{set_errno, Errno};
 
-use cosmwasm_vm::VmError;
+use cosmwasm_sgx_vm::VmError;
 use snafu::Snafu;
 
 use crate::memory::Buffer;
@@ -29,8 +29,14 @@ pub enum Error {
         #[cfg(feature = "backtraces")]
         backtrace: snafu::Backtrace,
     },
-    #[snafu(display("Error calling the VM: {}", msg))]
+    #[snafu(display("Execution error: {}", msg))]
     VmErr {
+        msg: String,
+        #[cfg(feature = "backtraces")]
+        backtrace: snafu::Backtrace,
+    },
+    #[snafu(display("{}", msg))]
+    GoCwEnclaveError {
         msg: String,
         #[cfg(feature = "backtraces")]
         backtrace: snafu::Backtrace,
@@ -55,6 +61,13 @@ impl Error {
 
     pub fn vm_err<S: ToString>(msg: S) -> Self {
         VmErr {
+            msg: msg.to_string(),
+        }
+        .build()
+    }
+
+    pub fn enclave_err<S: ToString>(msg: S) -> Self {
+        GoCwEnclaveError {
             msg: msg.to_string(),
         }
         .build()
@@ -131,7 +144,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmwasm_vm::FfiError;
+    use cosmwasm_sgx_vm::FfiError;
     use std::str;
 
     #[test]

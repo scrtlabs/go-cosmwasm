@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/CosmWasm/go-cosmwasm/api"
-	"github.com/CosmWasm/go-cosmwasm/types"
+	"github.com/enigmampc/SecretNetwork/go-cosmwasm/api"
+	"github.com/enigmampc/SecretNetwork/go-cosmwasm/types"
 )
 
 // CodeID represents an ID for a given wasm code blob, must be generated from this library
@@ -93,25 +93,27 @@ func (w *Wasmer) Instantiate(
 	querier Querier,
 	gasMeter GasMeter,
 	gasLimit uint64,
-) (*types.InitResponse, uint64, error) {
+) (*types.InitResponse, []byte, uint64, error) {
 	paramBin, err := json.Marshal(env)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, 0, err
 	}
 	data, gasUsed, err := api.Instantiate(w.cache, code, paramBin, initMsg, &gasMeter, store, &goapi, &querier, gasLimit)
 	if err != nil {
-		return nil, gasUsed, err
+		return nil, nil, gasUsed, err
 	}
 
+	key := data[0:64]
 	var resp types.InitResult
-	err = json.Unmarshal(data, &resp)
+	err = json.Unmarshal(data[64:], &resp)
 	if err != nil {
-		return nil, gasUsed, err
+		return nil, nil, gasUsed, err
 	}
+
 	if resp.Err != nil {
-		return nil, gasUsed, fmt.Errorf("%v", resp.Err)
+		return nil, nil, gasUsed, fmt.Errorf("%v", resp.Err)
 	}
-	return resp.Ok, gasUsed, nil
+	return resp.Ok, key, gasUsed, nil
 }
 
 // Execute calls a given contract. Since the only difference between contracts with the same CodeID is the
@@ -134,6 +136,7 @@ func (w *Wasmer) Execute(
 	if err != nil {
 		return nil, 0, err
 	}
+
 	data, gasUsed, err := api.Handle(w.cache, code, paramBin, executeMsg, &gasMeter, store, &goapi, &querier, gasLimit)
 	if err != nil {
 		return nil, gasUsed, err
@@ -141,12 +144,15 @@ func (w *Wasmer) Execute(
 
 	var resp types.HandleResult
 	err = json.Unmarshal(data, &resp)
+
 	if err != nil {
 		return nil, gasUsed, err
 	}
+
 	if resp.Err != nil {
 		return nil, gasUsed, fmt.Errorf("%v", resp.Err)
 	}
+
 	return resp.Ok, gasUsed, nil
 }
 

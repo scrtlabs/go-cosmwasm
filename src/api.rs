@@ -1,5 +1,5 @@
+use cosmwasm_sgx_vm::{Api, FfiError, FfiResult, GasInfo};
 use cosmwasm_std::{Binary, CanonicalAddr, HumanAddr};
-use cosmwasm_vm::{Api, FfiError, FfiResult, GasInfo};
 
 use crate::error::GoResult;
 use crate::memory::Buffer;

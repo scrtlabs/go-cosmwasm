@@ -1,4 +1,4 @@
-use cosmwasm_vm::{FfiResult, GasInfo, Storage, StorageIterator};
+use cosmwasm_sgx_vm::{FfiResult, GasInfo, Storage, StorageIterator};
 
 use crate::error::GoResult;
 use crate::gas_meter::gas_meter_t;

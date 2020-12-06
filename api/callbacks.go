@@ -1,3 +1,5 @@
+// +build !secretcli
+
 package api
 
 /*
@@ -41,7 +43,7 @@ import (
 
 	dbm "github.com/tendermint/tm-db"
 
-	"github.com/CosmWasm/go-cosmwasm/types"
+	"github.com/enigmampc/SecretNetwork/go-cosmwasm/types"
 )
 
 // Note: we have to include all exports in the same file (at least since they both import bindings.h),
